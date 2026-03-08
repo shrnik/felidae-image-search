@@ -115,6 +115,7 @@ def fetch_image_remote(url: str) -> Image.Image:
 
 def fetch_image_local(image_dir: Path, file_name: str) -> Image.Image:
     path = image_dir / file_name
+    print(f"Loading image from {path} ...")
     return load_image(path).convert("RGB")
 
 
@@ -165,7 +166,7 @@ def run(args: argparse.Namespace) -> None:
         img_info = images[idx]
         file_name = img_info["file_name"]
         category = img_to_cat.get(img_info["id"], "unknown")
-
+        print("file_name", file_name, "category", category)
         try:
             if args.mode == "local":
                 image = fetch_image_local(image_dir, file_name)
