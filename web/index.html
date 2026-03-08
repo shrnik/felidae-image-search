@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Felidae Image Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 2rem 1rem 1rem;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin-top: 0.4rem;
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+
+    /* ── Search bar ─────────────────────────────────────────────────── */
+    #search-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1.5rem 1rem;
+    }
+
+    #search-row {
+      display: flex;
+      width: 100%;
+      max-width: 640px;
+      gap: 0.5rem;
+    }
+
+    #query {
+      flex: 1;
+      padding: 0.65rem 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #query:focus { border-color: #60a5fa; }
+
+    #search-btn {
+      padding: 0.65rem 1.25rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: #3b82f6;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #search-btn:hover:not(:disabled) { background: #2563eb; }
+    #search-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── Filters ────────────────────────────────────────────────────── */
+    #filters {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+
+    #category-filter {
+      padding: 0.4rem 0.75rem;
+      border-radius: 0.4rem;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    #top-k-label { color: #94a3b8; }
+    #top-k {
+      width: 4rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      text-align: center;
+      outline: none;
+    }
+
+    /* ── Status / progress ─────────────────────────────────────────── */
+    #status {
+      text-align: center;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+      min-height: 1.5rem;
+    }
+
+    /* ── Results grid ───────────────────────────────────────────────── */
+    #results {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      padding: 1rem 1.5rem 3rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .card {
+      border-radius: 0.75rem;
+      overflow: hidden;
+      background: #1e293b;
+      border: 1px solid #334155;
+      transition: transform 0.15s, box-shadow 0.15s;
+      cursor: pointer;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .card img {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      display: block;
+      background: #0f1117;
+    }
+
+    .card-info {
+      padding: 0.6rem 0.75rem;
+    }
+
+    .card-category {
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-score {
+      margin-top: 0.15rem;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    /* ── Lightbox ───────────────────────────────────────────────────── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    #lightbox.open { display: flex; }
+
+    #lightbox-inner {
+      position: relative;
+      max-width: 90vw;
+      max-height: 90vh;
+    }
+
+    #lightbox img {
+      max-width: 100%;
+      max-height: 80vh;
+      border-radius: 0.5rem;
+      display: block;
+    }
+
+    #lightbox-close {
+      position: absolute;
+      top: -2rem;
+      right: 0;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    #lightbox-caption {
+      margin-top: 0.75rem;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 0.875rem;
+    }
+
+    /* ── Loader spinner ─────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      border: 2px solid #334155;
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.4em;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Felidae Wildlife Search</h1>
+  <p>Semantic search over 357k+ camera trap images · Powered by CLIP</p>
+</header>
+
+<div id="search-area">
+  <div id="search-row">
+    <input id="query" type="text" placeholder='e.g. "mountain lion at night", "deer on trail"' />
+    <button id="search-btn" disabled>Search</button>
+  </div>
+
+  <div id="filters">
+    <label for="category-filter">Species:</label>
+    <select id="category-filter"><option value="">All species</option></select>
+
+    <label id="top-k-label" for="top-k">Show top</label>
+    <input id="top-k" type="number" value="48" min="1" max="500" />
+    <span>results</span>
+  </div>
+</div>
+
+<div id="status"><span class="spinner"></span> Loading index…</div>
+<div id="results"></div>
+
+<div id="lightbox">
+  <div id="lightbox-inner">
+    <button id="lightbox-close">✕</button>
+    <img id="lightbox-img" src="" alt="" />
+    <div id="lightbox-caption"></div>
+  </div>
+</div>
+
+<!-- ONNX Runtime Web for in-browser CLIP text encoding -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+<script src="search.js"></script>
+</body>
+</html>

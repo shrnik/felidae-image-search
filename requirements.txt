@@ -1,0 +1,7 @@
+torch>=2.0
+torchvision
+transformers>=4.35
+Pillow
+requests
+numpy
+huggingface_hub
