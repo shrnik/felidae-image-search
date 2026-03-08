@@ -55,7 +55,7 @@ all_embeddings = []
 metadata_rows = []
 failed = []
 
-batch_size = 32
+batch_size = 64
 batch_images = []
 batch_meta = []
 

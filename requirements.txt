@@ -5,3 +5,4 @@ Pillow
 requests
 numpy
 huggingface_hub
+tqdm
