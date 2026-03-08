@@ -25,6 +25,7 @@ import os
 import time
 from io import BytesIO
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import requests
@@ -44,7 +45,7 @@ METADATA_CSV = OUTPUT_DIR / "metadata.csv"
 CHECKPOINT_FILE = OUTPUT_DIR / "checkpoint.json"
 FAILED_FILE = OUTPUT_DIR / "failed.json"
 
-BATCH_SIZE = 64
+BATCH_SIZE = 256
 SAVE_EVERY = 1000   # save checkpoint every N images
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
@@ -155,49 +156,68 @@ def run(args: argparse.Namespace) -> None:
                 f.unlink()
 
     failed: list[tuple[str, str]] = []
-    batch_images: list[Image.Image] = []
-    batch_meta: list[dict] = []
-    processed = start_index  # total images processed so far (including previous runs)
+    processed = start_index
 
     image_dir = Path(args.image_dir) if args.image_dir else None
+    todo = images[start_index:]
 
-    print(f"Processing {len(images) - start_index:,} images ...")
-    for idx in range(start_index, len(images)):
-        img_info = images[idx]
+    def load_one(img_info: dict) -> tuple[dict, Image.Image | None, str]:
+        """Load a single image; returns (img_info, pil_image_or_None, error)."""
         file_name = img_info["file_name"]
-        category = img_to_cat.get(img_info["id"], "unknown")
         try:
             if args.mode == "local":
-                image = fetch_image_local(image_dir, file_name)
+                return img_info, fetch_image_local(image_dir, file_name), ""
             else:
-                image = fetch_image_remote(BASE_URL + file_name)
+                return img_info, fetch_image_remote(BASE_URL + file_name), ""
         except Exception as e:
-            print(f"  FAILED {file_name}: {e}")
-            failed.append((file_name, str(e)))
-            continue
+            return img_info, None, str(e)
 
-        batch_images.append(image)
-        batch_meta.append({"id": processed, "file_name": file_name, "category": category})
-        processed += 1
+    print(f"Processing {len(todo):,} images ...")
+    with ThreadPoolExecutor(max_workers=args.io_workers) as pool:
+        # Submit one batch ahead so GPU and I/O overlap
+        chunk = BATCH_SIZE * 2  # prefetch 2× batch at a time
+        for batch_start in range(0, len(todo), chunk):
+            batch_infos = todo[batch_start : batch_start + chunk]
+            results = list(pool.map(load_one, batch_infos))
 
-        if len(batch_images) == BATCH_SIZE:
-            emb = embed_batch(model, processor, batch_images, device)
-            append_embeddings(emb)
-            append_metadata(batch_meta)
-            batch_images, batch_meta = [], []
+            batch_images: list[Image.Image] = []
+            batch_meta: list[dict] = []
+            last_idx = batch_start  # track for checkpoint
 
-        if processed % SAVE_EVERY == 0:
-            save_checkpoint(idx + 1)
+            for offset, (img_info, image, err) in enumerate(results):
+                file_name = img_info["file_name"]
+                if image is None:
+                    if len(failed) < 5:
+                        print(f"  FAILED {file_name}: {err}")
+                    failed.append((file_name, err))
+                    continue
+
+                batch_images.append(image)
+                batch_meta.append({
+                    "id": processed,
+                    "file_name": file_name,
+                    "category": img_to_cat.get(img_info["id"], "unknown"),
+                })
+                processed += 1
+                last_idx = batch_start + offset
+
+                if len(batch_images) == BATCH_SIZE:
+                    emb = embed_batch(model, processor, batch_images, device)
+                    append_embeddings(emb)
+                    append_metadata(batch_meta)
+                    batch_images, batch_meta = [], []
+
+            # Flush remainder of this chunk
+            if batch_images:
+                emb = embed_batch(model, processor, batch_images, device)
+                append_embeddings(emb)
+                append_metadata(batch_meta)
+
+            save_checkpoint(start_index + last_idx + 1)
             if failed:
                 with open(FAILED_FILE, "w") as f:
                     json.dump(failed, f)
             print(f"  {processed:,} / {len(images):,} done")
-
-    # ── Flush final partial batch ────────────────────────────────────────────
-    if batch_images:
-        emb = embed_batch(model, processor, batch_images, device)
-        append_embeddings(emb)
-        append_metadata(batch_meta)
 
     # ── Final save ───────────────────────────────────────────────────────────
     save_checkpoint(len(images))
@@ -234,6 +254,12 @@ def main() -> None:
         "--resume",
         action="store_true",
         help="Resume from last checkpoint",
+    )
+    parser.add_argument(
+        "--io-workers",
+        type=int,
+        default=8,
+        help="Threads for parallel image loading (default: 8)",
     )
     args = parser.parse_args()
 

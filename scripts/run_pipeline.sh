@@ -46,9 +46,10 @@ echo "[$(date)] Image download complete."
 # ── Step 3: Compute CLIP embeddings ──────────────────────────────────────────
 echo "[$(date)] Computing embeddings..."
 python scripts/compute_embeddings.py \
-    --metadata  "$METADATA_JSON" \
-    --mode      local \
-    --image-dir "$IMAGE_DIR" \
+    --metadata   "$METADATA_JSON" \
+    --mode       local \
+    --image-dir  "$IMAGE_DIR" \
+    --io-workers "$SLURM_CPUS_PER_TASK" \
     --resume
 
 echo "[$(date)] Embeddings written to $DATA_DIR/embeddings.bin"
