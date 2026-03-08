@@ -30,7 +30,9 @@ import numpy as np
 import requests
 import torch
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+from transformers import CLIPModel, CLIPProcessor, CLIPVisionModel
+from transformers.image_utils import load_image
+
 
 # ── Config ──────────────────────────────────────────────────────────────────
 METADATA_JSON = "felidae_conservation_fund_2020_2025.json"
@@ -113,7 +115,7 @@ def fetch_image_remote(url: str) -> Image.Image:
 
 def fetch_image_local(image_dir: Path, file_name: str) -> Image.Image:
     path = image_dir / file_name
-    return Image.open(path).convert("RGB")
+    return load_image(path).convert("RGB")
 
 
 def embed_batch(
@@ -122,8 +124,7 @@ def embed_batch(
     images: list[Image.Image],
     device: str,
 ) -> np.ndarray:
-    inputs = processor(images=images, return_tensors="pt", padding=True)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+    inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
     with torch.no_grad():
         emb = model.get_image_features(**inputs)
         emb = emb / emb.norm(dim=-1, keepdim=True)
