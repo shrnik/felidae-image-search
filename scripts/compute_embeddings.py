@@ -258,7 +258,7 @@ def main() -> None:
     parser.add_argument(
         "--io-workers",
         type=int,
-        default=8,
+        default=16,
         help="Threads for parallel image loading (default: 8)",
     )
     args = parser.parse_args()
