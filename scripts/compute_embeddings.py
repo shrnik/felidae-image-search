@@ -126,9 +126,9 @@ def embed_batch(
 ) -> np.ndarray:
     inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
     with torch.no_grad():
-        emb = model.get_image_features(**inputs)
-        emb = emb / emb.norm(dim=-1, keepdim=True)
-    return emb.cpu().numpy()
+        output = model.forward(**inputs)
+        emb = output.image_embeds.cpu().numpy()
+    return emb
 
 
 def run(args: argparse.Namespace) -> None:
