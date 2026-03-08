@@ -30,7 +30,7 @@ import numpy as np
 import requests
 import torch
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor, CLIPVisionModel
+from transformers import CLIPModel, CLIPProcessor, CLIPVisionModel, CLIPVisionModelWithProjection
 from transformers.image_utils import load_image
 
 
@@ -124,11 +124,12 @@ def embed_batch(
     images: list[Image.Image],
     device: str,
 ) -> np.ndarray:
-    inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
+    inputs = processor(images=images, return_tensors="pt")
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
     with torch.no_grad():
-        output = model.forward(**inputs)
-        emb = output.image_embeds.cpu().numpy()
-    return emb
+        output = model(**inputs)
+        emb = output.image_embeds
+    return emb.cpu().numpy()
 
 
 def run(args: argparse.Namespace) -> None:
@@ -139,7 +140,7 @@ def run(args: argparse.Namespace) -> None:
     # ── CLIP model ──────────────────────────────────────────────────────────
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device}")
-    model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+    model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32").to(device)
     processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
     model.eval()
 
