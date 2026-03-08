@@ -7,6 +7,7 @@
 #SBATCH --mail-user=s.borad@gwu.edu
 #SBATCH --mail-type=ALL
 #SBATCH -t 10:00:00
+#SBATCH --cpus-per-task=16
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate contrail_detection
