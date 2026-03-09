@@ -232,6 +232,31 @@ def run(args: argparse.Namespace) -> None:
         print(f"  Failed:     {FAILED_FILE}")
 
 
+def dry_run(args: argparse.Namespace) -> None:
+    """Embed the first image and print its shape/dimension as a sanity check."""
+    images, img_to_cat = load_coco_metadata(args.metadata)
+    first = images[0]
+
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    print(f"Device: {device}")
+    model = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-base-patch32").to(device)
+    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    model.eval()
+
+    image_dir = Path(args.image_dir) if args.image_dir else None
+    if args.mode == "local":
+        img = fetch_image_local(image_dir, first["file_name"])
+    else:
+        img = fetch_image_remote(BASE_URL + first["file_name"])
+
+    emb = embed_batch(model, processor, [img], device)
+    print(f"File:      {first['file_name']}")
+    print(f"Category:  {img_to_cat.get(first['id'], 'unknown')}")
+    print(f"Shape:     {emb.shape}")
+    print(f"Dimension: {emb.shape[-1]}")
+    print(f"L2 norm:   {float((emb[0] ** 2).sum() ** 0.5):.6f}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute CLIP embeddings for Felidae dataset")
     parser.add_argument(
@@ -261,6 +286,15 @@ def main() -> None:
         default=16,
         help="Threads for parallel image loading (default: 8)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Embed just the first image and print info (sanity check)",
+    )
+    if "--dry-run" in os.sys.argv:
+        args = parser.parse_args()
+        dry_run(args)
+        return
     args = parser.parse_args()
 
     if args.mode == "local" and not args.image_dir:
@@ -271,3 +305,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
