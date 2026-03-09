@@ -23,6 +23,5 @@ METADATA_JSON="$REPO_DIR/felidae_conservation_fund_2020_2025.json"
 
 python "$REPO_DIR/scripts/compute_embeddings_siglip2.py" \
     --mode local \
-    --image_dir "$IMAGE_DIR" \
+    --image-dir "$IMAGE_DIR" \
     --metadata "$METADATA_JSON" \
-    --output_dir "$DATA_DIR/siglip2"
