@@ -123,9 +123,7 @@ def embed_batch(
     processor: SiglipProcessor,
     images: list[Image.Image],
 ) -> np.ndarray:
-    inputs = processor(images=images, return_tensors="pt")
-    device = next(model.parameters()).device
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+    inputs = processor(images=images, return_tensors="pt").to(model.device)
     with torch.no_grad():
         image_features = model.get_image_features(**inputs)
     image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
