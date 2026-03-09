@@ -31,7 +31,7 @@ import numpy as np
 import requests
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModel, BitsAndBytesConfig
+from transformers import AutoModel, BitsAndBytesConfig, SiglipProcessor
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ def fetch_image_local(image_dir: Path, file_name: str) -> Image.Image:
 
 def embed_batch(
     model: AutoModel,
-    processor: AutoProcessor,
+    processor: SiglipProcessor,
     images: list[Image.Image],
 ) -> np.ndarray:
     inputs = processor(images=images, return_tensors="pt")
@@ -142,7 +142,7 @@ def run(args: argparse.Namespace) -> None:
         quantization_config=bnb_config,
         device_map="auto",
     )
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
+    processor = SiglipProcessor.from_pretrained(MODEL_ID)
     model.eval()
 
     # ── Resume support ───────────────────────────────────────────────────────
