@@ -1,12 +1,11 @@
 """
 Compute SigLIP-2 embeddings for the Felidae Conservation Fund camera trap dataset.
 
-Model: google/siglip2-base-patch16-224  (768-dim pooler_output, L2-normalised)
+Model: google/siglip2-base-patch16-224 loaded with bitsandbytes INT8 quantization,
+matching the INT8 quantization used by the ONNX text model at search time in JS
+(onnx-community/siglip2-base-patch16-224-ONNX).
 
 Usage:
-    # Stream images from Azure blob (slower, no local disk needed):
-    python compute_embeddings_siglip2.py --mode stream
-
     # Process from locally downloaded images (faster, recommended):
     python compute_embeddings_siglip2.py --mode local --image-dir /path/to/images
 
@@ -15,12 +14,14 @@ Usage:
 
     # Sanity check — embed the first image and print dimension/norm:
     python compute_embeddings_siglip2.py --mode local --image-dir /path/to/images --dry-run
+
+    # Stream images from Azure (no local disk needed):
+    python compute_embeddings_siglip2.py --mode stream
 """
 
 import argparse
 import csv
 import json
-import os
 import time
 from io import BytesIO
 from pathlib import Path
@@ -123,12 +124,10 @@ def embed_batch(
     images: list[Image.Image],
 ) -> np.ndarray:
     inputs = processor(images=images, return_tensors="pt")
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
     with torch.no_grad():
-        outputs = model.vision_model(**inputs)
-        emb = outputs.pooler_output                          # (N, 768)
-        emb = emb / emb.norm(dim=-1, keepdim=True)          # L2 normalise
-    return emb.cpu().numpy()
+        image_features = model.get_image_features(**inputs)
+    image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+    return image_features.cpu().numpy()
 
 
 def run(args: argparse.Namespace) -> None:
@@ -136,21 +135,13 @@ def run(args: argparse.Namespace) -> None:
 
     images, img_to_cat = load_coco_metadata(args.metadata)
 
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"Using device: {device}")
-    print(f"Loading {MODEL_ID} (quantization: {args.quantize}) ...")
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_8bit=True
-    )
-
-
+    print(f"Loading {MODEL_ID} with INT8 quantization ...")
+    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
     model = AutoModel.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
-        attn_implementation="sdpa"
+        device_map="auto",
     )
-    model = model.to(device)
     processor = AutoProcessor.from_pretrained(MODEL_ID)
     model.eval()
 
