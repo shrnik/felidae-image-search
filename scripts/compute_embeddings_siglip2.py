@@ -46,7 +46,7 @@ METADATA_CSV = OUTPUT_DIR / "metadata.csv"
 CHECKPOINT_FILE = OUTPUT_DIR / "checkpoint.json"
 FAILED_FILE = OUTPUT_DIR / "failed.json"
 
-BATCH_SIZE = 512
+BATCH_SIZE = 256
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
 # ────────────────────────────────────────────────────────────────────────────
