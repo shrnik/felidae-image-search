@@ -142,6 +142,7 @@ def run(args: argparse.Namespace) -> None:
     model = AutoModel.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
+        torch_dtype=torch.float16,
         device_map="auto",
         attn_implementation="sdpa"
     )
