@@ -144,7 +144,6 @@ def run(args: argparse.Namespace) -> None:
         quantization_config=bnb_config,
         torch_dtype=torch.float16,
         device_map="auto",
-        attn_implementation="sdpa"
     )
     processor = SiglipProcessor.from_pretrained(MODEL_ID)
     model.eval()
