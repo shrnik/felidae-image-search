@@ -136,7 +136,10 @@ def run(args: argparse.Namespace) -> None:
     images, img_to_cat = load_coco_metadata(args.metadata)
 
     print(f"Loading {MODEL_ID} with INT8 quantization ...")
-    bnb_config = BitsAndBytesConfig(load_in_4bit=True)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+    )
     model = AutoModel.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
