@@ -46,7 +46,7 @@ METADATA_CSV = OUTPUT_DIR / "metadata.csv"
 CHECKPOINT_FILE = OUTPUT_DIR / "checkpoint.json"
 FAILED_FILE = OUTPUT_DIR / "failed.json"
 
-BATCH_SIZE = 256
+BATCH_SIZE = 512
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
 # ────────────────────────────────────────────────────────────────────────────
@@ -140,10 +140,14 @@ def run(args: argparse.Namespace) -> None:
     print(f"Using device: {device}")
     print(f"Loading {MODEL_ID} (quantization: {args.quantize}) ...")
 
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit=True
+    )
+
 
     model = AutoModel.from_pretrained(
         MODEL_ID,
-        quantized=True,
+        quantization_config=bnb_config,
         attn_implementation="sdpa"
     )
     model = model.to(device)
