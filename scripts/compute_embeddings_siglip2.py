@@ -137,8 +137,7 @@ def run(args: argparse.Namespace) -> None:
 
     print(f"Loading {MODEL_ID} with INT8 quantization ...")
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
+        load_in_8bit=True
     )
     model = AutoModel.from_pretrained(
         MODEL_ID,
