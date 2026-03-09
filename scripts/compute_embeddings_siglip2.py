@@ -136,11 +136,12 @@ def run(args: argparse.Namespace) -> None:
     images, img_to_cat = load_coco_metadata(args.metadata)
 
     print(f"Loading {MODEL_ID} with INT8 quantization ...")
-    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+    bnb_config = BitsAndBytesConfig(load_in_4bit=True)
     model = AutoModel.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
         device_map="auto",
+        attn_implementation="sdpa"
     )
     processor = SiglipProcessor.from_pretrained(MODEL_ID)
     model.eval()
