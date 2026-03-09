@@ -9,7 +9,8 @@
 #SBATCH --mail-type=ALL
 #SBATCH -t 24:00:00
 
-cd $HOME/contrails_eccv/groundcam-contrail-detection
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate contrail_detection
 
 REPO_DIR="$HOME/felidae-image-search"
 DATA_DIR="$REPO_DIR/data"
@@ -18,11 +19,9 @@ METADATA_ZIP="$DATA_DIR/felidae_conservation_fund_2020_2025.zip"
 METADATA_JSON="$REPO_DIR/felidae_conservation_fund_2020_2025.json"
 
 
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate contrail_detection
 
 
-python scripts/compute_embeddings_siglip2.py \
+python "$REPO_DIR/scripts/compute_embeddings_siglip2.py" \
     --mode local \
     --image_dir "$IMAGE_DIR" \
     --metadata "$METADATA_JSON" \
