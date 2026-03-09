@@ -137,12 +137,13 @@ def run(args: argparse.Namespace) -> None:
 
     print(f"Loading {MODEL_ID} with INT8 quantization ...")
     bnb_config = BitsAndBytesConfig(
-        load_in_8bit=True
+        load_in_8bit=True,
+        llm_int8_skip_modules=["out_proj"],
     )
     model = AutoModel.from_pretrained(
         MODEL_ID,
         quantization_config=bnb_config,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
     )
     processor = SiglipProcessor.from_pretrained(MODEL_ID)
