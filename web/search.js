@@ -9,19 +9,13 @@
  *
  * Configuration — update HF_BASE_URL to point at your HuggingFace dataset repo.
  */
-
+const USER_NAME ="shrnik"
 // ── Config ─────────────────────────────────────────────────────────────────
 const HF_BASE_URL =
-  "https://huggingface.co/datasets/YOUR_USERNAME/felidae-image-search/resolve/main";
+  `https://huggingface.co/datasets/${USER_NAME}/felidae-image-search/resolve/main`;
 
 const IMAGE_BASE_URL =
-  "https://lilawildlife.blob.core.windows.net/lila-wildlife/felidae-conservation-fund/";
-
-const CLIP_ONNX_URL =
-  "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model_quantized.onnx";
-
-const CLIP_TOKENIZER_URL =
-  "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json";
+  "https://storage.googleapis.com/public-datasets-lila/felidae-conservation-fund/";
 
 const EMBEDDING_DIM = 512; // clip-vit-base-patch32
 // ───────────────────────────────────────────────────────────────────────────
@@ -29,8 +23,6 @@ const EMBEDDING_DIM = 512; // clip-vit-base-patch32
 // ── State ──────────────────────────────────────────────────────────────────
 let embeddings = null;   // Float32Array, shape [N, 512]
 let metadata = [];       // [{id, file_name, category}, ...]
-let onnxSession = null;
-let tokenizer = null;
 let numImages = 0;
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -65,26 +57,32 @@ function parseCSV(text) {
   });
 }
 
+// ── Cached fetch — hits browser Cache API first, network on miss ───────────
+const CACHE_NAME = "felidae-index-v1";
+
+async function cachedFetch(url) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(url);
+  if (cached) return cached;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`fetch failed: ${resp.status} ${url}`);
+  await cache.put(url, resp.clone());
+  return resp;
+}
+
 // ── Load precomputed data ──────────────────────────────────────────────────
 async function loadIndex() {
+  const metaUrl = `${HF_BASE_URL}/metadata.csv`;
+  const embUrl  = `${HF_BASE_URL}/embeddings.bin`;
+
   setStatus("Loading metadata…", true);
-  const csvResp = await fetch(`${HF_BASE_URL}/metadata.csv`);
-  if (!csvResp.ok) throw new Error(`metadata.csv fetch failed: ${csvResp.status}`);
+  const csvResp = await cachedFetch(metaUrl);
   metadata = parseCSV(await csvResp.text());
   numImages = metadata.length;
 
-  // Populate category filter
-  const cats = [...new Set(metadata.map((r) => r.category))].sort();
-  cats.forEach((cat) => {
-    const opt = document.createElement("option");
-    opt.value = cat;
-    opt.textContent = cat.replace(/_/g, " ");
-    categoryFilter.appendChild(opt);
-  });
-
-  setStatus(`Loading embeddings (${(numImages * EMBEDDING_DIM * 4 / 1e6).toFixed(0)} MB)…`, true);
-  const embResp = await fetch(`${HF_BASE_URL}/embeddings.bin`);
-  if (!embResp.ok) throw new Error(`embeddings.bin fetch failed: ${embResp.status}`);
+  const embSizeMB = (numImages * EMBEDDING_DIM * 4 / 1e6).toFixed(0);
+  setStatus(`Loading embeddings (${embSizeMB} MB)…`, true);
+  const embResp = await cachedFetch(embUrl);
   const buffer = await embResp.arrayBuffer();
   embeddings = new Float32Array(buffer);
 
@@ -94,68 +92,43 @@ async function loadIndex() {
       `expected ${numImages} × ${EMBEDDING_DIM}`
     );
   }
+
+  // L2-normalise each image embedding in-place
+  for (let i = 0; i < numImages; i++) {
+    const offset = i * EMBEDDING_DIM;
+    let norm = 0;
+    for (let d = 0; d < EMBEDDING_DIM; d++) norm += embeddings[offset + d] ** 2;
+    norm = Math.sqrt(norm);
+    if (norm > 0) for (let d = 0; d < EMBEDDING_DIM; d++) embeddings[offset + d] /= norm;
+  }
 }
 
-// ── Load CLIP text encoder (ONNX) + tokenizer ──────────────────────────────
-async function loadCLIP() {
-  setStatus("Loading CLIP text encoder…", true);
+// ── CLIP text encoder via Transformers.js ──────────────────────────────────
+let tokenizer = null;
+let textModel = null;
 
-  const [tokenizerResp] = await Promise.all([
-    fetch(CLIP_TOKENIZER_URL),
-  ]);
-  if (!tokenizerResp.ok) throw new Error("Failed to fetch tokenizer");
-  tokenizer = await tokenizerResp.json();
-
-  ort.env.wasm.numThreads = 1;
-  onnxSession = await ort.InferenceSession.create(CLIP_ONNX_URL, {
-    executionProviders: ["wasm"],
-  });
-}
-
-// ── Minimal BPE tokenizer for CLIP ────────────────────────────────────────
-// We use the Xenova/transformers.js approach: fetch the tokenizer.json vocab
-// and do BPE in JS. For simplicity we call the Transformers.js pipeline instead.
-
-// Lazy-load @xenova/transformers for text tokenisation + feature extraction.
-// This avoids bundling — works fine for a demo served from a local/CDN URL.
-let clipTextPipeline = null;
-async function getClipTextPipeline() {
-  if (clipTextPipeline) return clipTextPipeline;
-
-  setStatus("Initialising CLIP encoder (first query only)…", true);
-
-  // Dynamically import Transformers.js from CDN
-  const { pipeline } = await import(
-    "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"
-  );
-
-  clipTextPipeline = await pipeline(
-    "feature-extraction",
-    "Xenova/clip-vit-base-patch32",
-    { quantized: true }
-  );
-  return clipTextPipeline;
-}
-
-// ── Encode a text query to a normalised 512-d float32 vector ──────────────
 async function encodeText(text) {
-  const pipe = await getClipTextPipeline();
-  const output = await pipe(text, { pooling: "none" });
-  // output.data is Float32Array of shape [1, seq_len, 512] — take [CLS] (or EOS)
-  // For CLIP we want the EOS token embedding. Transformers.js returns the
-  // last hidden state; the CLIP text embedding is the feature at the EOS position.
-  // Use the last non-padding position: just take the final embedding.
-  const dim = EMBEDDING_DIM;
-  const seqLen = output.data.length / dim;
-  // EOS is at seqLen-1
-  const vec = new Float32Array(output.data.buffer, (seqLen - 1) * dim * 4, dim);
+  if (!tokenizer || !textModel) {
+    setStatus("Initialising CLIP encoder (first query only)…", true);
+    const { AutoTokenizer, CLIPTextModelWithProjection } = await import(
+      "https://cdn.jsdelivr.net/npm/@xenova/transformers"
+    );
+    [tokenizer, textModel] = await Promise.all([
+      AutoTokenizer.from_pretrained("Xenova/clip-vit-base-patch32"),
+      CLIPTextModelWithProjection.from_pretrained("Xenova/clip-vit-base-patch32"),
+    ]);
+  }
+
+  const inputs = tokenizer([text], { padding: true, truncation: true });
+  const { text_embeds } = await textModel(inputs);
 
   // L2 normalise
+  const vec = text_embeds.data;
   let norm = 0;
-  for (let i = 0; i < dim; i++) norm += vec[i] * vec[i];
+  for (let i = 0; i < vec.length; i++) norm += vec[i] * vec[i];
   norm = Math.sqrt(norm);
-  const result = new Float32Array(dim);
-  for (let i = 0; i < dim; i++) result[i] = vec[i] / norm;
+  const result = new Float32Array(vec.length);
+  for (let i = 0; i < vec.length; i++) result[i] = vec[i] / norm;
   return result;
 }
 
@@ -164,11 +137,7 @@ function topKSearch(queryVec, k, filterCategory) {
   const dim = EMBEDDING_DIM;
   const scores = [];
 
-  const indices = filterCategory
-    ? metadata
-        .map((r, i) => (r.category === filterCategory ? i : -1))
-        .filter((i) => i >= 0)
-    : Array.from({ length: numImages }, (_, i) => i);
+  const indices = Array.from({ length: numImages }, (_, i) => i);
 
   for (const idx of indices) {
     let dot = 0;
