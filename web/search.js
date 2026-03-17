@@ -66,7 +66,7 @@ async function cachedFetch(url) {
   if (cached) return cached;
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`fetch failed: ${resp.status} ${url}`);
-  await cache.put(url, resp.clone());
+  try { await cache.put(url, resp.clone()); } catch { /* quota exceeded, skip cache */ }
   return resp;
 }
 
